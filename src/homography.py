@@ -1,11 +1,12 @@
 import cv2
 import numpy as np
 
+
 DEST_POINTS = np.float32([
-    [20, 20],
-    [480, 20],
-    [20, 300],
-    [480, 300]
+    [40, 40],
+    [760, 40],
+    [40, 480],
+    [760, 480]
 ])
 
 HOMOGRAPHY_SEGMENTS = [
@@ -44,19 +45,16 @@ HOMOGRAPHY_SEGMENTS = [
 
 def build_homography_matrices():
     segments = []
-
     for segment in HOMOGRAPHY_SEGMENTS:
         H = cv2.getPerspectiveTransform(
             segment["source_points"],
             DEST_POINTS
         )
-
         segments.append({
             "start_sec": segment["start_sec"],
             "end_sec": segment["end_sec"],
             "matrix": H
         })
-
     return segments
 
 
