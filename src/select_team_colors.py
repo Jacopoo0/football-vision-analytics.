@@ -1,212 +1,96 @@
-from pathlib import Path
 import cv2
-from ultralytics import YOLO
-from team_classifier import TeamClassifier
+import json
+import numpy as np
+from pathlib import Path
+from team_classifier import _dominant_lab
+
+BASE_DIR     = Path(__file__).resolve().parent.parent
+VIDEO_PATH   = BASE_DIR / "data" / "raw" / "input_vid.mp4"
+OUTPUT_JSON  = BASE_DIR / "team_colors.json"
+SAMPLES_EACH = 12
+START_FRAME  = 800
+
+COLOR_UI = {0: (100, 80, 220), 1: (60, 180, 60)}
+NAMES    = {0: "TEAM 0", 1: "TEAM 1"}
+
+samples      = {0: [], 1: []}
+current_team = 0
+
+cap = cv2.VideoCapture(str(VIDEO_PATH))
+cap.set(cv2.CAP_PROP_POS_FRAMES, START_FRAME)
+ok, frame = cap.read()
+cap.release()
+
+if not ok:
+    print("Impossibile leggere il video.")
+    exit()
+
+vis     = frame.copy()
+drawing = False
+ix, iy  = -1, -1
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-VIDEO_PATH = BASE_DIR / "data" / "raw" / "input_vid.mp4"
-MODEL_PATH = BASE_DIR / "yolov8n.pt"
-OUTPUT_JSON = BASE_DIR / "team_colors.json"
-SAMPLES_PER_TEAM = 3
-
-
-classifier = TeamClassifier()
-selected = []
-frame = None
-base_frame = None
-person_boxes = []
-
-
-def detect_players(img, model):
-    results = model(img, classes=[0], verbose=True)[0]
-    boxes = []
-
-    for box in results.boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-        conf = float(box.conf[0])
-        area = max(1, (x2 - x1) * (y2 - y1))
-
-        if conf < 0.25:
-            continue
-        if area < 500:
-            continue
-
-        boxes.append((x1, y1, x2, y2, conf))
-
-    return boxes
-
-
-def team_color(team_id):
-    if team_id == 0:
-        return (255, 0, 0)
-    if team_id == 1:
-        return (0, 0, 255)
-    return (0, 255, 255)
-
-
-def current_team_to_pick():
-    if len(selected) < SAMPLES_PER_TEAM:
-        return 0
-    return 1
-
-
-def redraw():
-    global frame
-    frame = base_frame.copy()
-
-    for (x1, y1, x2, y2, conf) in person_boxes:
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (180, 180, 180), 1)
-
-    for item in selected:
-        x1, y1, x2, y2 = item["bbox"]
-        t = item["team_id"]
-        color = team_color(t)
-
-        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 3)
-        cv2.putText(
-            frame,
-            f"T{t}",
-            (x1, max(20, y1 - 8)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            color,
-            2
-        )
-
-    t0 = sum(1 for x in selected if x["team_id"] == 0)
-    t1 = sum(1 for x in selected if x["team_id"] == 1)
-
-    if len(selected) < 2 * SAMPLES_PER_TEAM:
-        next_team = current_team_to_pick()
-        msg = f"Clicca TEAM {next_team} ({t0}/{SAMPLES_PER_TEAM} - {t1}/{SAMPLES_PER_TEAM})"
-    else:
-        msg = "Premi S per salvare, R per ricominciare, Q per uscire"
-
-    cv2.putText(
-        frame,
-        msg,
-        (20, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.75,
-        (0, 255, 255),
-        2
-    )
-
-
-def find_box_for_point(x, y):
-    containing = []
-
-    for (x1, y1, x2, y2, conf) in person_boxes:
-        if x1 <= x <= x2 and y1 <= y <= y2:
-            area = (x2 - x1) * (y2 - y1)
-            containing.append((area, (x1, y1, x2, y2)))
-
-    if containing:
-        containing.sort(key=lambda z: z[0])
-        return containing[0][1]
-
-    best_box = None
-    best_dist = 10**9
-
-    for (x1, y1, x2, y2, conf) in person_boxes:
-        cx = (x1 + x2) // 2
-        cy = (y1 + y2) // 2
-        dist = (cx - x) ** 2 + (cy - y) ** 2
-        if dist < best_dist:
-            best_dist = dist
-            best_box = (x1, y1, x2, y2)
-
-    return best_box
+def draw_ui(img):
+    overlay = img.copy()
+    cv2.rectangle(overlay, (0, 0), (img.shape[1], 44), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.8, img, 0.2, 0, img)
+    t0  = len(samples[0])
+    t1  = len(samples[1])
+    msg = (f"T0:{t0}/{SAMPLES_EACH}  T1:{t1}/{SAMPLES_EACH}  "
+           f"| Selezione: {NAMES[current_team]}  "
+           f"| TAB=cambia squadra  INVIO=salva  ESC=esci")
+    cv2.putText(img, msg, (8, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                0.52, COLOR_UI[current_team], 1, cv2.LINE_AA)
 
 
 def on_mouse(event, x, y, flags, param):
-    if event != cv2.EVENT_LBUTTONDOWN:
-        return
-
-    if len(selected) >= 2 * SAMPLES_PER_TEAM:
-        return
-
-    bbox = find_box_for_point(x, y)
-    if bbox is None:
-        return
-
-    feature = classifier.extract_jersey_feature(base_frame, bbox)
-    if feature is None:
-        return
-
-    team_id = current_team_to_pick()
-    classifier.add_sample(team_id, feature)
-    selected.append({"team_id": team_id, "bbox": bbox})
-
-    print(f"Aggiunto sample TEAM {team_id}: bbox={bbox}")
-    redraw()
-
-
-def main():
-    global frame, base_frame, person_boxes, classifier, selected
-
-    print("VIDEO_PATH =", VIDEO_PATH)
-    print("MODEL_PATH =", MODEL_PATH)
-    print("OUTPUT_JSON =", OUTPUT_JSON)
-
-    if not VIDEO_PATH.exists():
-        print(f"Video non trovato: {VIDEO_PATH}")
-        return
-
-    if not MODEL_PATH.exists():
-        print(f"Modello non trovato: {MODEL_PATH}")
-        return
-
-    cap = cv2.VideoCapture(str(VIDEO_PATH))
-    ok, first_frame = cap.read()
-    cap.release()
-
-    if not ok:
-        print(f"Errore: impossibile leggere il video {VIDEO_PATH}")
-        return
-
-    model = YOLO(str(MODEL_PATH))
-    base_frame = first_frame.copy()
-    person_boxes = detect_players(base_frame, model)
-
-    if len(person_boxes) == 0:
-        print("Nessun giocatore rilevato nel primo frame")
-        return
-
-    redraw()
-
-    cv2.namedWindow("Select Team Colors")
-    cv2.setMouseCallback("Select Team Colors", on_mouse)
-
-    while True:
-        cv2.imshow("Select Team Colors", frame)
-        key = cv2.waitKey(1) & 0xFF
-
-        if key == ord("q"):
-            break
-
-        elif key == ord("r"):
-            classifier = TeamClassifier()
-            selected = []
-            redraw()
-            print("Reset completato")
-
-        elif key == ord("s"):
-            t0 = len(classifier.samples[0])
-            t1 = len(classifier.samples[1])
-
-            if t0 == SAMPLES_PER_TEAM and t1 == SAMPLES_PER_TEAM:
-                classifier.save_samples(str(OUTPUT_JSON))
-                print(f"Samples salvati in {OUTPUT_JSON}")
-                print(f"TEAM 0 samples: {t0}")
-                print(f"TEAM 1 samples: {t1}")
-                break
-            else:
-                print("Devi selezionare 3 giocatori per TEAM 0 e 3 giocatori per TEAM 1")
-
-    cv2.destroyAllWindows()
+    global drawing, ix, iy, vis
+    if event == cv2.EVENT_LBUTTONDOWN:
+        drawing = True
+        ix, iy  = x, y
+    elif event == cv2.EVENT_MOUSEMOVE and drawing:
+        vis = frame.copy()
+        cv2.rectangle(vis, (ix, iy), (x, y), COLOR_UI[current_team], 2)
+        draw_ui(vis)
+    elif event == cv2.EVENT_LBUTTONUP:
+        drawing = False
+        rx, ry  = min(ix, x), min(iy, y)
+        rw, rh  = abs(x - ix), abs(y - iy)
+        if rw > 10 and rh > 15:
+            color = _dominant_lab(frame, (rx, ry, rx + rw, ry + rh))
+            if color is not None:
+                samples[current_team].append(color.tolist())
+                print(f"  Team {current_team}: {len(samples[current_team])}/{SAMPLES_EACH}")
+        vis = frame.copy()
+        draw_ui(vis)
 
 
-if __name__ == "__main__":
-    main()
+cv2.namedWindow("Select Team Colors")
+cv2.setMouseCallback("Select Team Colors", on_mouse)
+draw_ui(vis)
+
+print("Disegna un rettangolo sulla MAGLIA.")
+print("TAB=cambia squadra | INVIO=salva | ESC=esci")
+
+while True:
+    cv2.imshow("Select Team Colors", vis)
+    key = cv2.waitKey(20) & 0xFF
+    if key == 9:   # TAB
+        current_team = 1 - current_team
+        vis = frame.copy()
+        draw_ui(vis)
+        print(f">>> {NAMES[current_team]}")
+    elif key == 13:  # INVIO
+        if len(samples[0]) < 3 or len(samples[1]) < 3:
+            print(f"Troppo pochi campioni: T0={len(samples[0])} T1={len(samples[1])}")
+            continue
+        data = {f"team_{k}": v for k, v in samples.items()}
+        with open(OUTPUT_JSON, "w") as f:
+            json.dump(data, f, indent=2)
+        print(f"Salvato: {OUTPUT_JSON}")
+        break
+    elif key == 27:  # ESC
+        print("Annullato.")
+        break
+
+cv2.destroyAllWindows()

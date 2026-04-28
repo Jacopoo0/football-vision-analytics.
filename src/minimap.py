@@ -1,97 +1,97 @@
 import cv2
 import numpy as np
+from collections import deque
+
+PITCH_LENGTH  = 105.0
+PITCH_WIDTH   = 68.0
+FIELD_COLOR   = (34, 85, 34)
+LINE_COLOR    = (255, 255, 255)
+BALL_TRAIL_LEN = 30
 
 
-MINIMAP_WIDTH = 800
-MINIMAP_HEIGHT = 520
-PADDING = 40
+def create_minimap(scale: float = 6.0):
+    w = int(PITCH_LENGTH * scale) + 80
+    h = int(PITCH_WIDTH  * scale) + 80
+    canvas = np.full((h, w, 3), FIELD_COLOR, dtype=np.uint8)
 
-FIELD_COLOR = (34, 85, 34)
-LINE_COLOR = (255, 255, 255)
-PENALTY_COLOR = (255, 255, 255)
+    def p(x, y):
+        return int(x * scale) + 40, int(y * scale) + 40
 
+    cv2.rectangle(canvas, p(0, 0), p(PITCH_LENGTH, PITCH_WIDTH), LINE_COLOR, 2)
+    cv2.line(canvas, p(PITCH_LENGTH/2, 0), p(PITCH_LENGTH/2, PITCH_WIDTH), LINE_COLOR, 2)
 
-def create_minimap():
-    minimap = np.zeros((MINIMAP_HEIGHT, MINIMAP_WIDTH, 3), dtype=np.uint8)
-    minimap[:] = FIELD_COLOR
+    cx, cy = p(PITCH_LENGTH/2, PITCH_WIDTH/2)
+    cv2.circle(canvas, (cx, cy), int(9.15 * scale), LINE_COLOR, 2)
+    cv2.circle(canvas, (cx, cy), 3, LINE_COLOR, -1)
 
-    # Bordo campo
-    cv2.rectangle(minimap, (PADDING, PADDING),
-                  (MINIMAP_WIDTH - PADDING, MINIMAP_HEIGHT - PADDING),
-                  LINE_COLOR, 2)
+    bw = 40.32
+    by1 = (PITCH_WIDTH - bw) / 2
+    by2 = by1 + bw
+    cv2.rectangle(canvas, p(0, by1),               p(16.5, by2),                LINE_COLOR, 2)
+    cv2.rectangle(canvas, p(PITCH_LENGTH-16.5, by1), p(PITCH_LENGTH, by2),      LINE_COLOR, 2)
 
-    # Linea centrocampo
-    cv2.line(minimap,
-             (MINIMAP_WIDTH // 2, PADDING),
-             (MINIMAP_WIDTH // 2, MINIMAP_HEIGHT - PADDING),
-             LINE_COLOR, 2)
+    sw = 18.32
+    sy1 = (PITCH_WIDTH - sw) / 2
+    sy2 = sy1 + sw
+    cv2.rectangle(canvas, p(0, sy1),              p(5.5, sy2),              LINE_COLOR, 2)
+    cv2.rectangle(canvas, p(PITCH_LENGTH-5.5, sy1), p(PITCH_LENGTH, sy2),  LINE_COLOR, 2)
 
-    # Cerchio centrocampo
-    cv2.circle(minimap,
-               (MINIMAP_WIDTH // 2, MINIMAP_HEIGHT // 2),
-               55, LINE_COLOR, 2)
+    cv2.circle(canvas, p(11, PITCH_WIDTH/2),              3, LINE_COLOR, -1)
+    cv2.circle(canvas, p(PITCH_LENGTH-11, PITCH_WIDTH/2), 3, LINE_COLOR, -1)
 
-    # Punto centrocampo
-    cv2.circle(minimap,
-               (MINIMAP_WIDTH // 2, MINIMAP_HEIGHT // 2),
-               4, LINE_COLOR, -1)
-
-    field_w = MINIMAP_WIDTH - 2 * PADDING
-    field_h = MINIMAP_HEIGHT - 2 * PADDING
-
-    # Area di rigore sinistra
-    pen_w = int(field_w * 0.12)
-    pen_h = int(field_h * 0.45)
-    pen_y1 = MINIMAP_HEIGHT // 2 - pen_h // 2
-    pen_y2 = MINIMAP_HEIGHT // 2 + pen_h // 2
-    cv2.rectangle(minimap,
-                  (PADDING, pen_y1),
-                  (PADDING + pen_w, pen_y2),
-                  PENALTY_COLOR, 2)
-
-    # Area piccola sinistra
-    small_w = int(field_w * 0.05)
-    small_h = int(field_h * 0.22)
-    small_y1 = MINIMAP_HEIGHT // 2 - small_h // 2
-    small_y2 = MINIMAP_HEIGHT // 2 + small_h // 2
-    cv2.rectangle(minimap,
-                  (PADDING, small_y1),
-                  (PADDING + small_w, small_y2),
-                  PENALTY_COLOR, 2)
-
-    # Area di rigore destra
-    cv2.rectangle(minimap,
-                  (MINIMAP_WIDTH - PADDING - pen_w, pen_y1),
-                  (MINIMAP_WIDTH - PADDING, pen_y2),
-                  PENALTY_COLOR, 2)
-
-    # Area piccola destra
-    cv2.rectangle(minimap,
-                  (MINIMAP_WIDTH - PADDING - small_w, small_y1),
-                  (MINIMAP_WIDTH - PADDING, small_y2),
-                  PENALTY_COLOR, 2)
-
-    # Dischetti rigore
-    pen_spot_offset = int(field_w * 0.08)
-    cv2.circle(minimap,
-               (PADDING + pen_spot_offset, MINIMAP_HEIGHT // 2),
-               4, LINE_COLOR, -1)
-    cv2.circle(minimap,
-               (MINIMAP_WIDTH - PADDING - pen_spot_offset, MINIMAP_HEIGHT // 2),
-               4, LINE_COLOR, -1)
-
-    return minimap
+    return canvas, scale, (40, 40)
 
 
-def draw_player_on_minimap(minimap, map_x, map_y, track_id, color=(0, 255, 0)):
-    cv2.circle(minimap, (map_x, map_y), 7, (0, 0, 0), -1)
-    cv2.circle(minimap, (map_x, map_y), 5, color, -1)
-    cv2.putText(
-        minimap,
-        str(track_id),
-        (map_x + 8, map_y - 6),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.38,
-        (255, 255, 255),
-        1
-    )
+def field_to_minimap(x: float, y: float, scale: float, offset: tuple):
+    return int(x * scale) + offset[0], int(y * scale) + offset[1]
+
+
+def draw_player_on_minimap(minimap, x: int, y: int, track_id: int, color: tuple):
+    cv2.circle(minimap, (x, y), 7, (0, 0, 0), -1)
+    cv2.circle(minimap, (x, y), 5, color, -1)
+    cv2.putText(minimap, str(track_id), (x + 7, y - 4),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.32, (255, 255, 255), 1)
+
+
+def draw_ball_trail(minimap, trail: deque):
+    pts = list(trail)
+    n   = len(pts)
+    if n < 2:
+        return
+    for i, (px, py) in enumerate(pts):
+        t      = i / (n - 1)
+        radius = max(1, int(t * 5))
+        b      = int(80  * (1 - t))
+        g      = int(255 * t)
+        r      = 255
+        color  = (b, g, r)
+
+        x1c = max(0, px - radius)
+        y1c = max(0, py - radius)
+        x2c = min(minimap.shape[1] - 1, px + radius)
+        y2c = min(minimap.shape[0] - 1, py + radius)
+
+        if x2c > x1c and y2c > y1c:
+            roi  = minimap[y1c:y2c+1, x1c:x2c+1].astype(np.float32)
+            mask = np.zeros_like(roi)
+            cv2.circle(mask, (px - x1c, py - y1c), radius, color, -1)
+            alpha = t * 0.85
+            minimap[y1c:y2c+1, x1c:x2c+1] = np.clip(
+                roi * (1 - alpha) + mask * alpha, 0, 255
+            ).astype(np.uint8)
+
+
+def draw_ball_on_minimap(minimap, x: int, y: int):
+    cv2.circle(minimap, (x, y), 7, (0, 0, 0), -1)
+    cv2.circle(minimap, (x, y), 5, (255, 255, 255), -1)
+
+
+def draw_minimap_legend(minimap, legend_items: list):
+    h, w = minimap.shape[:2]
+    y    = h - 16
+    cv2.rectangle(minimap, (0, y - 12), (w, h), (20, 20, 20), -1)
+    for i, (color, label) in enumerate(legend_items):
+        x = 16 + i * 88
+        cv2.circle(minimap, (x, y + 2), 5, color, -1)
+        cv2.putText(minimap, label, (x + 9, y + 6),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (235, 235, 235), 1)
