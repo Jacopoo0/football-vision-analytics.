@@ -8,7 +8,7 @@ BASE_DIR     = Path(__file__).resolve().parent.parent
 VIDEO_PATH   = BASE_DIR / "data" / "raw" / "input_vid.mp4"
 OUTPUT_JSON  = BASE_DIR / "team_colors.json"
 SAMPLES_EACH = 12
-START_FRAME  = 800
+START_FRAME  = 150
 
 COLOR_UI = {0: (100, 80, 220), 1: (60, 180, 60)}
 NAMES    = {0: "TEAM 0", 1: "TEAM 1"}
