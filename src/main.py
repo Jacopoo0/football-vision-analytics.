@@ -436,7 +436,7 @@ def main():
     reid_weights = BASE_DIR / "models" / "osnet_x0_25_msmt17.pt"
     tracker = StrongSort(
         reid_weights   = reid_weights,
-        device         = "cuda",
+        device         = "0",
         half           = False,
         max_dist       = 0.2,
         max_iou_dist   = 0.7,
