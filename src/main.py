@@ -119,96 +119,102 @@ def build_panel(stats, sec, team_counts, frame_idx, max_frames) -> np.ndarray:
     d    = ImageDraw.Draw(img)
     M    = 14
 
-    d.rectangle([0, 0, W, 56], fill=_BG)
-    d.rectangle([0, 0, 3, 56], fill=_ACCENT)
-    _t(d, "MATCH",    (M+8, 8),  11, _MUTED)
-    _t(d, "ANALYSIS", (M+8, 22), 18, _WHITE, bold=True)
-    d.rounded_rectangle([M+8, 40, M+52, 53], radius=4, fill=_ACCENT)
-    _t(d, "LIVE", (M+13, 42), 9, _BG, bold=True)
+    # ── Header ────────────────────────────────────────────────────────────────
+    d.rectangle([0, 0, W, 60], fill=_BG)
+    d.rectangle([0, 0, 4, 60], fill=_ACCENT)
+    _t(d, "MATCH ANALYSIS", (M+10, 10), 14, _WHITE, bold=True)
+    d.rounded_rectangle([M+8, 28, M+42, 42], radius=4, fill=_ACCENT)
+    _t(d, "LIVE", (M+12, 30), 9, _BG, bold=True)
     mins  = int(sec)//60; secs_ = int(sec)%60
-    _t(d, f"{mins:02d}:{secs_:02d}", (W-M, 10), 28, _WHITE, bold=True, anchor="rt")
-    _t(d, f"{frame_idx/max(max_frames,1)*100:.0f}% completato",
-       (W-M, 42), 9, _MUTED, anchor="rt")
+    _t(d, f"{mins:02d}:{secs_:02d}", (W-M, 10), 26, _WHITE, bold=True, anchor="rt")
+    _t(d, f"{frame_idx/max(max_frames,1)*100:.0f}%", (W-M, 40), 9, _MUTED, anchor="rt")
+    y = 68
 
-    y = 64
-
-    _card(d, M, y, W-M, y+106, radius=10)
-    _t(d, "POSSESSO PALLA", (M+14, y+10), 10, _MUTED, bold=True)
-    _hline(d, M+14, W-M-14, y+26, _BORDER)
+    # ── Possesso ──────────────────────────────────────────────────────────────
+    _card(d, M, y, W-M, y+96, radius=10)
+    _t(d, "POSSESSO PALLA", (M+14, y+8), 9, _MUTED, bold=True)
+    _hline(d, M+14, W-M-14, y+22, _BORDER)
     p0, p1   = stats.possession_pct()
     rp0, rp1 = stats.recent_possession()
-    _t(d, f"{p0:.0f}%", (M+14,   y+30), 44, _T0, bold=True)
-    _t(d, f"{p1:.0f}%", (W-M-14, y+30), 44, _T1, bold=True, anchor="rt")
-    _t(d, "TEAM 0",     (M+14,   y+78),  9, _T0, bold=True)
-    _t(d, "TEAM 1",     (W-M-14, y+78),  9, _T1, bold=True, anchor="rt")
-    _hbar(d, M+14, y+88, W-M*2-28, 11, p0, _T0, _T1, radius=5)
-    _t(d, f"ultimi 5s  {rp0:.0f}% - {rp1:.0f}%",
-       (W//2, y+102), 9, _MUTED, anchor="mt")
-    y += 114
+    _t(d, f"{p0:.0f}%", (W//2-10, y+26), 38, _T0, bold=True, anchor="rt")
+    _t(d, "-",           (W//2,    y+36), 14, _MUTED, anchor="mt")
+    _t(d, f"{p1:.0f}%", (W//2+10, y+26), 38, _T1, bold=True)
+    _t(d, "T0",          (M+14,    y+68),  9, _T0, bold=True)
+    _t(d, "T1",          (W-M-14,  y+68),  9, _T1, bold=True, anchor="rt")
+    _hbar(d, M+14, y+80, W-M*2-28, 10, p0, _T0, _T1, radius=5)
+    _t(d, f"recente  {rp0:.0f}% – {rp1:.0f}%", (W//2, y+90), 9, _MUTED, anchor="mt")
+    y += 104
 
+    # ── Giocatori in campo ────────────────────────────────────────────────────
     half = (W - M*3) // 2
-    _card(d, M, y, M+half, y+78, radius=10)
+    _card(d, M, y, M+half, y+66, radius=10)
     d.rounded_rectangle([M, y, M+half, y+4], radius=2, fill=_T0)
-    _dot(d, M+18, y+20, 4, _T0)
-    _t(d, "TEAM 0",  (M+26, y+13), 10, _T0, bold=True)
-    _t(d, str(team_counts.get(0, 0)), (M+14, y+26), 38, _WHITE, bold=True)
-    _t(d, "in campo", (M+14, y+66), 9, _MUTED)
+    _dot(d, M+14, y+16, 4, _T0)
+    _t(d, "TEAM 0",                      (M+22, y+10),  9, _T0,   bold=True)
+    _t(d, str(team_counts.get(0, 0)),    (M+14, y+22), 32, _WHITE, bold=True)
+    _t(d, "in campo",                    (M+14, y+58),  9, _MUTED)
     x2c = M*2 + half
-    _card(d, x2c, y, x2c+half, y+78, radius=10)
+    _card(d, x2c, y, x2c+half, y+66, radius=10)
     d.rounded_rectangle([x2c, y, x2c+half, y+4], radius=2, fill=_T1)
-    _dot(d, x2c+18, y+20, 4, _T1)
-    _t(d, "TEAM 1",  (x2c+26, y+13), 10, _T1, bold=True)
-    _t(d, str(team_counts.get(1, 0)), (x2c+14, y+26), 38, _WHITE, bold=True)
-    _t(d, "in campo", (x2c+14, y+66), 9, _MUTED)
-    y += 86
+    _dot(d, x2c+14, y+16, 4, _T1)
+    _t(d, "TEAM 1",                      (x2c+22, y+10),  9, _T1,   bold=True)
+    _t(d, str(team_counts.get(1, 0)),    (x2c+14, y+22), 32, _WHITE, bold=True)
+    _t(d, "in campo",                    (x2c+14, y+58),  9, _MUTED)
+    y += 74
 
-    _card(d, M, y, W-M, y+58, radius=10)
-    _t(d, "PASSAGGI", (M+14, y+10), 10, _MUTED, bold=True)
-    _hline(d, M+14, W-M-14, y+26, _BORDER)
-    _t(d, str(stats.passes.get(0, 0)), (M+14,    y+28), 28, _T0, bold=True)
-    _t(d, "TEAM 0",                    (M+14,    y+50),  9, _MUTED)
-    _vline(d, W//2, y+28, y+58)
-    _t(d, str(stats.passes.get(1, 0)), (W//2+14, y+28), 28, _T1, bold=True)
-    _t(d, "TEAM 1",                    (W//2+14, y+50),  9, _MUTED)
-    y += 66
+    # ── Passaggi ──────────────────────────────────────────────────────────────
+    _card(d, M, y, W-M, y+52, radius=10)
+    _t(d, "PASSAGGI", (M+14, y+8), 9, _MUTED, bold=True)
+    _hline(d, M+14, W-M-14, y+22, _BORDER)
+    ps0 = stats.passes.get(0, 0)
+    ps1 = stats.passes.get(1, 0)
+    _t(d, str(ps0), (M+14,    y+24), 24, _T0, bold=True)
+    _t(d, "TEAM 0",  (M+14,    y+46),  9, _MUTED)
+    _vline(d, W//2,  y+22, y+52)
+    _t(d, str(ps1), (W//2+14, y+24), 24, _T1, bold=True)
+    _t(d, "TEAM 1",  (W//2+14, y+46),  9, _MUTED)
+    y += 60
 
-    _card(d, M, y, W-M, y+76, radius=10)
-    _t(d, "VELOCITA' GIOCATORI", (M+14, y+10), 10, _MUTED, bold=True)
-    _hline(d, M+14, W-M-14, y+26, _BORDER)
+    # ── Velocità ──────────────────────────────────────────────────────────────
+    _card(d, M, y, W-M, y+74, radius=10)
+    _t(d, "VELOCITÀ", (M+14, y+8), 9, _MUTED, bold=True)
+    _hline(d, M+14, W-M-14, y+22, _BORDER)
     s0, s1   = stats.avg_speed_kmh()
     mx0, mx1 = stats.max_speed_kmh()
-    _t(d, f"{s0:.1f}", (M+14,    y+28), 26, _T0, bold=True)
-    _t(d, "km/h med",  (M+14,    y+54),  9, _MUTED)
-    _t(d, f"max {mx0:.1f}", (M+14, y+66), 9, _T0)
-    _vline(d, W//2, y+28, y+74)
-    _t(d, f"{s1:.1f}", (W//2+14, y+28), 26, _T1, bold=True)
-    _t(d, "km/h med",  (W//2+14, y+54),  9, _MUTED)
-    _t(d, f"max {mx1:.1f}", (W//2+14, y+66), 9, _T1)
-    y += 84
+    _t(d, f"{s0:.1f}",        (M+14,    y+24), 24, _T0, bold=True)
+    _t(d, "km/h med",         (M+14,    y+50),  9, _MUTED)
+    _t(d, f"↑ {mx0:.1f} km/h", (M+14,  y+62),  9, _T0)
+    _vline(d, W//2, y+22, y+72)
+    _t(d, f"{s1:.1f}",        (W//2+14, y+24), 24, _T1, bold=True)
+    _t(d, "km/h med",         (W//2+14, y+50),  9, _MUTED)
+    _t(d, f"↑ {mx1:.1f} km/h", (W//2+14, y+62), 9, _T1)
+    y += 82
 
-    _card(d, M, y, W-M, y+82, radius=10)
-    _t(d, "DISTANZA PERCORSA", (M+14, y+10), 10, _MUTED, bold=True)
-    _hline(d, M+14, W-M-14, y+26, _BORDER)
+    # ── Distanza ──────────────────────────────────────────────────────────────
+    _card(d, M, y, W-M, y+74, radius=10)
+    _t(d, "DISTANZA PERCORSA", (M+14, y+8), 9, _MUTED, bold=True)
+    _hline(d, M+14, W-M-14, y+22, _BORDER)
     d0, d1 = stats.distance_meters()
     bw     = W - M*2 - 28
     max_d  = max(d0, d1, 1.0)
     bw0 = max(6, int(bw * d0/max_d))
-    d.rounded_rectangle([M+14, y+32, M+14+bw,  y+42], radius=4, fill=_FAINT)
-    d.rounded_rectangle([M+14, y+32, M+14+bw0, y+42], radius=4, fill=_T0)
-    _t(d, "T0",                (M+14,    y+48),  9, _MUTED)
-    _t(d, f"{d0/1000:.2f} km", (W-M-14,  y+48), 10, _T0, bold=True, anchor="rt")
+    d.rounded_rectangle([M+14, y+28, M+14+bw,  y+38], radius=4, fill=_FAINT)
+    d.rounded_rectangle([M+14, y+28, M+14+bw0, y+38], radius=4, fill=_T0)
+    _t(d, "T0",                (M+14,   y+42),  9, _MUTED)
+    _t(d, f"{d0/1000:.2f} km", (W-M-14, y+42), 10, _T0, bold=True, anchor="rt")
     bw1 = max(6, int(bw * d1/max_d))
-    d.rounded_rectangle([M+14, y+60, M+14+bw,  y+70], radius=4, fill=_FAINT)
-    d.rounded_rectangle([M+14, y+60, M+14+bw1, y+70], radius=4, fill=_T1)
-    _t(d, "T1",                (M+14,    y+76),  9, _MUTED)
-    _t(d, f"{d1/1000:.2f} km", (W-M-14,  y+76), 10, _T1, bold=True, anchor="rt")
-    y += 90
+    d.rounded_rectangle([M+14, y+52, M+14+bw,  y+62], radius=4, fill=_FAINT)
+    d.rounded_rectangle([M+14, y+52, M+14+bw1, y+62], radius=4, fill=_T1)
+    _t(d, "T1",                (M+14,   y+66),  9, _MUTED)
+    _t(d, f"{d1/1000:.2f} km", (W-M-14, y+66), 10, _T1, bold=True, anchor="rt")
+    y += 82
 
+    # ── Footer ────────────────────────────────────────────────────────────────
     refn = team_counts.get(2, 0)
     unkn = team_counts.get(-1, 0)
     _t(d, f"Arbitri: {refn}   Non assegnati: {unkn}", (M+14, y+4), 9, _MUTED)
     pct = frame_idx / max(max_frames, 1)
-    d.rectangle([0, H-8, W, H], fill=_FAINT)
+    d.rectangle([0, H-8, W, H],          fill=_FAINT)
     d.rectangle([0, H-8, int(W*pct), H], fill=_ACCENT)
     _t(d, f"{frame_idx} / {max_frames} frames", (M, H-20), 9, _MUTED)
 
