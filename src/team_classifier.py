@@ -3,11 +3,16 @@ import json
 import numpy as np
 from sklearn.cluster import KMeans
 
+
+# Regione della maglia (escludi testa e gambe)
 JERSEY_Y_TOP    = 0.15
 JERSEY_Y_BOTTOM = 0.55
 JERSEY_X_LEFT   = 0.15
 JERSEY_X_RIGHT  = 0.85
-UNKNOWN_MARGIN  = 0.25
+
+# Margine: piu' alto = piu' permissivo (meno "unknown")
+# Abbassato da 0.25 a 0.35 per ridurre i "non assegnati"
+UNKNOWN_MARGIN = 0.35
 
 
 def _dominant_lab(frame_bgr: np.ndarray, bbox: tuple):
@@ -25,6 +30,7 @@ def _dominant_lab(frame_bgr: np.ndarray, bbox: tuple):
     if crop.size == 0:
         return None
 
+    # Rimuovi pixel verde (erba)
     hsv        = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
     grass_mask = cv2.inRange(hsv, np.array([30, 40, 40]), np.array([90, 255, 255]))
     valid      = cv2.bitwise_not(grass_mask)
@@ -36,7 +42,7 @@ def _dominant_lab(frame_bgr: np.ndarray, bbox: tuple):
     pixels_u8  = pixels.reshape(-1, 1, 3).astype(np.uint8)
     pixels_lab = cv2.cvtColor(pixels_u8, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
 
-    k  = min(3, len(pixels_lab))
+    k = min(3, len(pixels_lab))
     if k < 2:
         return pixels_lab.mean(axis=0)
 
@@ -48,16 +54,43 @@ def _dominant_lab(frame_bgr: np.ndarray, bbox: tuple):
 
 class TeamClassifier:
     def __init__(self):
+        # Un centroide per squadra (media di tutti i campioni)
         self.centroids      = {}
         self.unknown_margin = UNKNOWN_MARGIN
 
     def load_samples(self, json_path: str):
         with open(json_path, "r") as f:
             data = json.load(f)
+
         for key, samples in data.items():
             tid = int(str(key).split("_")[-1])
             arr = np.array(samples, dtype=np.float32)
-            self.centroids[tid] = arr.mean(axis=0)
+
+            # FIX: Team 0 ha due cluster distinti (maglie chiare L>100 e scure L<60)
+            # Il centroide medio (L~100) e' in mezzo e non rappresenta nessuna maglia reale.
+            # Soluzione: usa il cluster piu' numeroso come centroide rappresentativo.
+            if len(arr) >= 6:
+                from sklearn.cluster import KMeans as _KM
+                # Testa se ci sono 2 cluster ben separati
+                km2 = _KM(n_clusters=2, n_init=5, random_state=0)
+                km2.fit(arr)
+                counts = np.bincount(km2.labels_)
+                # Se i due cluster sono molto separati (dist > 80 in LAB), tienili separati
+                centers = km2.cluster_centers_
+                dist_centers = np.linalg.norm(centers[0] - centers[1])
+                if dist_centers > 80 and counts.min() >= 2:
+                    # Salva entrambi i sub-centroidi come team_0a e team_0b
+                    # oppure usa solo il cluster piu' numeroso
+                    dominant_cluster = np.argmax(counts)
+                    self.centroids[tid] = centers[dominant_cluster]
+                    print(f"  Team {tid}: 2 cluster rilevati (dist={dist_centers:.0f}), "
+                          f"uso cluster dominante (n={counts[dominant_cluster]}), "
+                          f"LAB={centers[dominant_cluster].round(1)}")
+                else:
+                    self.centroids[tid] = arr.mean(axis=0)
+            else:
+                self.centroids[tid] = arr.mean(axis=0)
+
         print(f"TeamClassifier: {len(self.centroids)} squadre caricate")
         for tid, c in self.centroids.items():
             print(f"  Team {tid}: LAB={c.round(1)}")
@@ -68,12 +101,16 @@ class TeamClassifier:
         color = _dominant_lab(frame, bbox)
         if color is None:
             return -1, 0.0
+
         dists   = {tid: float(np.linalg.norm(color - c))
                    for tid, c in self.centroids.items()}
         sorted_ = sorted(dists.items(), key=lambda x: x[1])
         best_id, best_d = sorted_[0]
+
         if len(sorted_) > 1:
             _, second_d = sorted_[1]
-            if (second_d - best_d) < self.unknown_margin * second_d:
+            # unknown solo se i due centroidi sono troppo simili in distanza
+            if second_d > 0 and (second_d - best_d) < self.unknown_margin * second_d:
                 return -1, best_d
+
         return best_id, best_d
