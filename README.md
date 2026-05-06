@@ -1,220 +1,228 @@
-# ⚽ Football Match Analysis AI
+<div align="center">
 
-> **Analizza video di partite di calcio in tempo reale** - Identifica automaticamente le squadre e visualizza statistiche live in una dashboard laterale interattiva.
+⚽ MiniMappaFootBall
+Real-time football video analysis — player tracking, team classification, match statistics & tactical minimap
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)
-![Status](https://img.shields.io/badge/Status-Active-green)
-![License](https://img.shields.io/badge/License-MIT-orange)
 
----
 
-## 📺 Come Funziona
+MiniMappaFootBall is a computer vision pipeline that processes football match footage in real time — detecting players and the ball with a custom YOLOv8 model, assigning persistent multi-object track IDs via BoTSORT with camera motion compensation, classifying each player into their team by jersey colour, and rendering a live DAZN-style analytics overlay with a calibrated tactical minimap.
 
-L'applicazione **elabora video di partite di calcio** e fornisce un'analisi visuale in tempo reale:
 
-```
-VIDEO INPUT                    PROCESSING                    OUTPUT
-    ↓                              ↓                            ↓
-  [Match]  →  [Team Detection]  →  [Dashboard Display]
-              [Player Tracking]     • Team Identification
-              [Statistics]          • Live Match Stats
-              [Data Analysis]       • Performance Metrics
-```
 
-### 🎯 Flusso di Utilizzo
+</div>
 
-1. **Carica un video** di una partita di calcio
-2. L'AI **identifica automaticamente** le due squadre
-3. **Analizza il gameplay** in tempo reale
-4. Mostra il video con una **dashboard laterale** contenente:
-   - Nome e logo delle squadre
-   - Punteggio e tempo di gioco
-   - Statistiche in tempo reale
-   - Metriche di performance
+📸 Output Preview
 
----
+<img width="1918" height="781" alt="image" src="https://github.com/user-attachments/assets/5441e3b9-ddff-4a95-ab93-431987e5c236" />
 
-## ✨ Funzionalità Principali
 
-### 🤖 Riconoscimento Squadre
-- **Identificazione automatica** delle maglie/colori delle squadre
-- **Riconoscimento logo** e informazioni ufficiali
-- Classificazione in tempo reale dei giocatori per team
+✨ Features
+Module	Description
 
-### 📊 Dashboard Laterale
-Visualizza contemporaneamente al video:
-- 👥 **Nomi squadre** e stemmi
-- 🎯 **Punteggio** aggiornato
-- ⏱️ **Tempo di gioco** e fase del match
-- 📈 **Statistiche live**: possesso palla, tiri, falli, etc.
-- 🏃 **Performance giocatori**: velocità, distanza percorsa, passaggi
-- 🔄 **Event tracking**: gol, ammonizioni, sostituzioni
+🔍 Detection	YOLOv8 with custom soccana_best.pt — detects Player, Ball, Referee per frame🎯 Tracking	BoTSORT with camera motion compensation (cmc_method=sof) — stable IDs across cuts and occlusions
 
-### 🎬 Video Processing
-- Supporta **video MP4, AVI, MOV**
-- Elaborazione frame-by-frame
-- Overlay di dati in tempo reale
-- Output video annotato salvabile
+👕 Team Classifier	Dominant jersey colour extracted in LAB space via KMeans; 30-frame history buffer stabilises noisy frames
 
----
+📊 Stats Engine	Per-team: possession %, passes, avg/max speed (km/h), distance (km) — all computed in real time🗺️ Tactical Minimap	Automatic homography from green-field contour detection; recalibrates every 30 frames for pan/zoom
 
-## 🛠️ Tecnologie Utilizzate
+🎨 DAZN-style UI	Dark professional panel built with Pillow + Inter font; split possession bar, colour-coded cards, progress strip
 
-| Categoria | Tecnologie |
-|-----------|-----------|
-| **Linguaggio** | Python 3.9+ |
-| **Computer Vision** | OpenCV, YOLOv8, MediaPipe |
-| **Machine Learning** | TensorFlow, PyTorch, Scikit-learn |
-| **Data Processing** | Pandas, NumPy |
-| **Visualizzazione** | Matplotlib, Plotly, OpenCV |
-| **Interfaccia** | Streamlit / PyQt5 |
+🖼️ Preprocessing	CLAHE contrast enhancement + sharpening kernel applied before each inference — improves detection on compressed or low-quality footage
 
----
+⚡ Threaded Pipeline	InferenceWorker thread decouples inference from video I/O; no frame dropping in the main loop
 
-## 🚀 Quick Start
+📁 Project Structure
 
-### 1️⃣ Clona il Repository
-```bash
-git clone https://github.com/Jacopoo0/football-match-analysis-ai.git
-cd football-match-analysis-ai
-```
 
-### 2️⃣ Installa Dipendenze
-```bash
+text
+
+
+MiniMappaFootBall/
+│
+├── data/
+│   └── raw/
+│       └── input_vid.mp4               ← source footage
+│
+├── models/
+│   ├── soccana_best.pt                 ← custom YOLO weights (football)
+│   └── osnet_x0_25_msmt17.pt           ← ReID weights for BoTSORT
+│
+├── src/
+│   ├── main.py                         ← pipeline entry point & canvas rendering
+│   ├── team_classifier.py              ← LAB-space jersey colour classification
+│   ├── stats_tracker.py                ← possession, passes, speed, distance
+│   ├── homography.py                   ← bird's-eye minimap via homography
+│   └── select_team_colors.py           ← interactive colour sampler (run once)
+│
+├── .font_cache/
+│   ├── Inter-Regular.otf
+│   └── Inter-Bold.otf
+│
+├── team_colors.json                    ← LAB centroids per team (generated)
+├── output_football_analysis.mp4        ← analysis output (generated)
+├── requirements.txt
+└── README.md
+🚀 Quick Start
+1 · Prerequisites
+Python 3.12
+
+NVIDIA GPU + CUDA 12.1 (tested: RTX 4060 Laptop)
+
+PyTorch 2.5.1 with CUDA
+
+2 · Install
+bash
+git clone https://github.com/YOUR_USERNAME/MiniMappaFootBall.git
+cd MiniMappaFootBall
+
+python -m venv .venv
+# Windows
+.venv\Scripts\Activate.ps1
+# Linux / macOS
+source .venv/bin/activate
+
 pip install -r requirements.txt
-```
+3 · Calibrate Team Colours (run once per video)
+bash
+python src/select_team_colors.py
+Draw rectangles over player jerseys → TAB to switch team → ENTER to save team_colors.json.
 
-### 3️⃣ Esegui l'Analisi
-```bash
-python main.py --video match.mp4
-```
+4 · Run Analysis
+bash
+python src/main.py
+Output is written to output_football_analysis.mp4.
 
-### 4️⃣ Visualizza Risultati
-L'applicazione aprirà una finestra con:
-- **Video della partita** a sinistra
-- **Dashboard dati** a destra in tempo reale
+⚙️ Configuration
+Edit the constants block at the top of src/main.py:
 
----
-
-## 💡 Esempi di Utilizzo
-
-### Analizzare una Partita
-```python
-from analysis import FootballAnalyzer
-
-analyzer = FootballAnalyzer()
-result = analyzer.analyze_video('match.mp4')
-
-# result contiene:
-# - Team 1 e Team 2 identificate
-# - Frame-by-frame stats
-# - Events timeline
-# - Performance metrics
-```
-
-### Esportare Dashboard
-```bash
-python main.py --video match.mp4 --export dashboard.mp4 --format mp4
-```
-
----
-
-## 📁 Struttura Progetto
-
-```
-football-match-analysis-ai/
-├── main.py                    # Entry point principale
-├── analysis/
-│   ├── team_detector.py       # Riconoscimento squadre
-│   ├── player_tracker.py      # Tracking giocatori
-│   └── stats_calculator.py    # Calcolo statistiche
-├── dashboard/
-│   ├── dashboard_builder.py   # Generazione dashboard
-│   └── data_formatter.py      # Formattazione dati
-├── video/
-│   ├── processor.py           # Elaborazione video
-│   └── overlays.py            # Overlay dati su video
-├── models/                     # Modelli ML pre-trained
-└── requirements.txt
-```
-
----
-
-## 📊 Output Generato
-
-L'applicazione produce:
-
-✅ **Video annotato** con overlay di squadre e statistiche  
-✅ **Dashboard laterale live** con metriche aggiornate  
-✅ **Report JSON** con dati completi della partita  
-✅ **Timeline di eventi** (gol, cartellini, sostituzioni)  
-✅ **Grafici di performance** salvabili come immagini  
-
----
-
-## 🎮 Interfaccia
-
-La dashboard laterale mostra in tempo reale:
-
-```
+python
+MAX_SECONDS  = 60      # seconds to process  (None = full video)
+PLAYER_CONF  = 0.18    # YOLO confidence threshold
+INFER_SIZE   = 640     # inference resolution — higher → more accurate, slower
+SAVE_VIDEO   = True    # write output .mp4
+SHOW_PREVIEW = False   # display live OpenCV window
+FRAME_W      = 960     # output frame width
+FRAME_H      = 540     # output frame height
+PANEL_W      = 360     # stats panel width
+🏗️ Pipeline Architecture
+text
+┌──────────────┐
+│  Video Frame │
+└──────┬───────┘
+       │
+       ▼
 ┌─────────────────────┐
-│   SQUAD 1  │ 2 - 1  │ SQUAD 2
-├─────────────────────┤
-│ ⏱️  45:30           │
-├─────────────────────┤
-│ Possesso Palla      │
-│ ████░░░░░ 56%       │
-├─────────────────────┤
-│ Tiri in porta       │
-│ Squad 1:    8       │
-│ Squad 2:    5       │
-├─────────────────────┤
-│ Passaggi Completati │
-│ Squad 1:   243      │
-│ Squad 2:   187      │
-├─────────────────────┤
-│ Falli Commessi      │
-│ Squad 1:   12       │
-│ Squad 2:   15       │
-└─────────────────────┘
-```
+│  preprocess_frame() │  CLAHE + sharpening kernel
+└──────┬──────────────┘
+       │
+       ├─────────────────────────────────────────┐
+       ▼                                         ▼
+┌─────────────────┐                    ┌──────────────────┐
+│  YOLO (players) │                    │   YOLO (ball)    │
+│  conf=0.18      │                    │   conf=0.05      │
+└──────┬──────────┘                    └────────┬─────────┘
+       │                                        │
+       ▼                                        ▼
+┌──────────────┐                      ┌──────────────────┐
+│   BoTSORT    │  CMC: sof            │   ball_center    │
+│   track IDs  │  track_buffer=120    │   (pixel coords) │
+└──────┬───────┘                      └────────┬─────────┘
+       │                                        │
+       ▼                                        │
+┌─────────────────┐                             │
+│ TeamClassifier  │                             │
+│ LAB → team 0/1  │                             │
+│ history=30f     │                             │
+└──────┬──────────┘                             │
+       │                                        │
+       └──────────────┬─────────────────────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │    StatsTracker     │
+           │  possession         │
+           │  passes (≥6f streak)│
+           │  speed / distance   │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │  HomographyMapper   │
+           │  green mask → H     │
+           │  recal every 30f    │
+           │  render_minimap()   │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │  build_panel()      │
+           │  build_canvas()     │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           output_football_analysis.mp4
+📊 Stats Reference
+Metric	Computation
+Possession	Team of the player closest to the ball (threshold: 90 px)
+Recent possession	Rolling 5-second window
+Pass	Team change event after ≥ 6 consecutive frames of possession by the previous team
+Speed	Δpx × 0.058 m/px × fps × 3.6 → km/h; per-player rolling window (1 s)
+Distance	Cumulative displacement per player, filtered to 0.5 – 60 px / frame
+Max speed	Per-team rolling maximum, physically capped at 60 km/h
+🗺️ Minimap & Homography
+The minimap is a 300 × 194 px bird's-eye view of a standard 105 × 68 m pitch, calibrated automatically each run:
 
----
+HSV green mask → isolates the pitch surface
 
-## 🔮 Roadmap
+Morphological cleaning (CLOSE + OPEN, 9 × 9 ellipse) → removes crowd / ad-board noise
 
-- **v1.0** ✅ Riconoscimento squadre base
-- **v1.1** 🔄 Tracking giocatori avanzato
-- **v1.2** 📅 Prossimamente: Riconoscimento tattica/formazione
-- **v2.0** 📅 Prossimamente: Multi-camera support
-- **v2.1** 📅 Prossimamente: Real-time API per streaming live
+approxPolyDP on the largest green contour → extracts 4 field corners; falls back to bounding rect (± 3% margin) when the polygon has ≠ 4 vertices
 
----
+cv2.findHomography (RANSAC) → pixel space to metric space mapping
 
-## 🤝 Contribuire
+Recalibration every 30 frames → handles camera pan / zoom / cut
 
-Le pull request sono benvenute! Per modifiche significative, apri prima un issue per discutere i cambiamenti proposti.
+Player foot-point (cx, cy) is projected through H and rendered as a coloured dot with a white ring. The ball is rendered as a yellow dot with a glow.
 
-```bash
-1. Fork il repository
-2. Crea un branch feature (git checkout -b feature/AmazingFeature)
-3. Commit i cambiamenti (git commit -m 'Add AmazingFeature')
-4. Push al branch (git push origin feature/AmazingFeature)
-5. Apri una Pull Request
-```
+🛣️ Roadmap
+Heatmaps — per-player and per-team spatial density overlays
 
----
+Formation detection — automatic recognition of 4-4-2, 4-3-3, etc.
 
-## 📝 License
+Event detection — shot on goal, corner kick, throw-in
 
-Questo progetto è distribuito sotto la licenza MIT - vedi il file [LICENSE](LICENSE) per i dettagli.
+CSV / JSON export — per-frame structured statistics
 
----
+Web dashboard — Angular frontend + Django REST backend
 
-## 📧 Support
+Multi-camera support — cross-view homography stitching
 
-Per domande o feedback: [Email](mailto:support@example.com) | [Issues](https://github.com/Jacopoo0/football-match-analysis-ai/issues)
+1080p / 4K input — optimised inference for broadcast quality video
 
----
+🤝 Contributing
+Contributions are welcome. Please open an issue first to discuss significant changes.
 
-**Made with ⚽ and 🤖 by [Jacopoo0](https://github.com/Jacopoo0)**
+bash
+# Fork → branch → commit → pull request
+git checkout -b feature/your-feature-name
+git commit -m "feat: describe your change"
+git push origin feature/your-feature-name
+📄 License
+Distributed under the MIT License. See LICENSE for details.
+
+<div align="center">
+
+Built with &nbsp;
+YOLOv8 ·
+BoxMOT ·
+Supervision ·
+OpenCV ·
+Pillow ·
+scikit-learn
+
+
+
+If you find this project useful, consider leaving a ⭐
+
+</div>
+
