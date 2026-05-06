@@ -4,15 +4,6 @@
 Real-time football video analysis — player tracking, team classification, match statistics & tactical minimap
 
 
-[
-[
-[
-[
-[
-[
-[
-
-
 
 MiniMappaFootBall is a computer vision pipeline that processes football match footage in real time — detecting players and the ball with a custom YOLOv8 model, assigning persistent multi-object track IDs via BoTSORT with camera motion compensation, classifying each player into their team by jersey colour, and rendering a live DAZN-style analytics overlay with a calibrated tactical minimap.
 
@@ -26,16 +17,7 @@ MiniMappaFootBall is a computer vision pipeline that processes football match fo
 
 
 ✨ Features
-Module	Description
-🔍 Detection	YOLOv8 with custom soccana_best.pt — detects Player, Ball, Referee per frame
-🎯 Tracking	BoTSORT with camera motion compensation (cmc_method=sof) — stable IDs across cuts and occlusions
-👕 Team Classifier	Dominant jersey colour extracted in LAB space via KMeans; 30-frame history buffer stabilises noisy frames
-📊 Stats Engine	Per-team: possession %, passes, avg/max speed (km/h), distance (km) — all computed in real time
-🗺️ Tactical Minimap	Automatic homography from green-field contour detection; recalibrates every 30 frames for pan/zoom
-🎨 DAZN-style UI	Dark professional panel built with Pillow + Inter font; split possession bar, colour-coded cards, progress strip
-🖼️ Preprocessing	CLAHE contrast enhancement + sharpening kernel applied before each inference — improves detection on compressed or low-quality footage
-⚡ Threaded Pipeline	InferenceWorker thread decouples inference from video I/O; no frame dropping in the main loop
-📁 Project Structure
+Module	Description🔍 Detection	YOLOv8 with custom soccana_best.pt — detects Player, Ball, Referee per frame🎯 Tracking	BoTSORT with camera motion compensation (cmc_method=sof) — stable IDs across cuts and occlusions👕 Team Classifier	Dominant jersey colour extracted in LAB space via KMeans; 30-frame history buffer stabilises noisy frames📊 Stats Engine	Per-team: possession %, passes, avg/max speed (km/h), distance (km) — all computed in real time🗺️ Tactical Minimap	Automatic homography from green-field contour detection; recalibrates every 30 frames for pan/zoom🎨 DAZN-style UI	Dark professional panel built with Pillow + Inter font; split possession bar, colour-coded cards, progress strip🖼️ Preprocessing	CLAHE contrast enhancement + sharpening kernel applied before each inference — improves detection on compressed or low-quality footage⚡ Threaded Pipeline	InferenceWorker thread decouples inference from video I/O; no frame dropping in the main loop📁 Project Structure
 text
 MiniMappaFootBall/
 │
