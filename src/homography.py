@@ -3,7 +3,7 @@ import numpy as np
 
 FIELD_W = 105.0
 FIELD_H = 68.0
-MAP_W   = 320
+MAP_W   = 220
 MAP_H   = int(MAP_W * FIELD_H / FIELD_W)
 
 # Palette dark DAZN
