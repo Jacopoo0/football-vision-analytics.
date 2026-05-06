@@ -1,112 +1,113 @@
 import cv2
 import numpy as np
 
-# Campo reale in metri (FIFA standard)
+
 FIELD_W = 105.0
 FIELD_H = 68.0
 
-# Minimap dimensioni pixel
 MAP_W = 320
 MAP_H = int(MAP_W * FIELD_H / FIELD_W)
 
-# Colori minimap
-_GREEN      = (34,  139, 34)
+_GREEN      = (34,  139,  34)
 _WHITE      = (255, 255, 255)
-_T0         = (255, 132, 56)
-_T1         = (72,  72,  248)
+_T0         = (255, 132,  56)
+_T1         = (72,   72, 248)
 _BALL_COLOR = (40,  200, 255)
 
 
 class HomographyMapper:
-    """
-    Calcola la homografia automaticamente usando le linee del campo
-    rilevate con la trasformata di Hough, senza keypoint manuali.
-    """
-
     def __init__(self):
-        self.H           = None   # matrice 3x3 pixel -> campo
-        self.H_inv       = None   # campo -> pixel
-        self._frame_buf  = []     # ultimi frame per calibrazione
-        self._calibrated = False
-        self._cal_every  = 30     # ricalibra ogni N frame
-        self._frame_cnt  = 0
+        self.H            = None
+        self.H_inv        = None
+        self._calibrated  = False
+        self._cal_every   = 30
+        self._frame_cnt   = 0
+        self._field_pts   = np.array([
+            [0,       0      ],
+            [FIELD_W, 0      ],
+            [FIELD_W, FIELD_H],
+            [0,       FIELD_H],
+        ], dtype=np.float32)
+        self._players  = {}
+        self._ball_map = None
 
-        # Punti campo reale (angoli + centrocampo)
-        self._field_pts = np.array([
+    # ── ordina 4 punti: TL, TR, BR, BL ───────────────────────────────────────
+    def _order_points(self, pts):
+        rect = np.zeros((4, 2), dtype=np.float32)
+        s    = pts.sum(axis=1)
+        diff = np.diff(pts, axis=1)
+        rect[0] = pts[np.argmin(s)]     # top-left
+        rect[1] = pts[np.argmin(diff)]  # top-right
+        rect[2] = pts[np.argmax(s)]     # bottom-right
+        rect[3] = pts[np.argmax(diff)]  # bottom-left
+        return rect
+
+    # ── rileva i 4 angoli del campo ───────────────────────────────────────────
+    def _detect_field_corners(self, frame):
+        h, w = frame.shape[:2]
+
+        # 1) Maschera verde con pulizia morfologica
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        green_mask = cv2.inRange(
+            hsv,
+            np.array([30, 40, 40]),
+            np.array([90, 255, 255])
+        )
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_CLOSE, kernel)
+        green_mask = cv2.morphologyEx(green_mask, cv2.MORPH_OPEN,  kernel)
+
+        # 2) Contorno verde piu' grande
+        contours, _ = cv2.findContours(
+            green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return None
+
+        largest = max(contours, key=cv2.contourArea)
+        area    = cv2.contourArea(largest)
+
+        # Il campo deve occupare almeno il 15% del frame
+        if area < h * w * 0.15:
+            return None
+
+        # 3) Approssimazione poligonale: se otteniamo 4 punti usiamoli
+        peri   = cv2.arcLength(largest, True)
+        approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
+        if len(approx) == 4:
+            pts = approx.reshape(4, 2).astype(np.float32)
+            return self._order_points(pts)
+
+        # 4) Fallback: bounding rect con margine per escludere tribune
+        x, y, bw, bh = cv2.boundingRect(largest)
+        margin_x = int(bw * 0.03)
+        margin_y = int(bh * 0.03)
+        x  += margin_x
+        y  += margin_y
+        bw -= margin_x * 2
+        bh -= margin_y * 2
+        pts = np.array([
+            [x,      y      ],
+            [x + bw, y      ],
+            [x + bw, y + bh ],
+            [x,      y + bh ],
+        ], dtype=np.float32)
+        return self._order_points(pts)
+
+    # ── calcola la matrice di omografia ───────────────────────────────────────
+    def calibrate(self, frame):
+        src_pts = self._detect_field_corners(frame)
+        if src_pts is None:
+            return False
+
+        dst_pts = np.array([
             [0,       0      ],
             [FIELD_W, 0      ],
             [FIELD_W, FIELD_H],
             [0,       FIELD_H],
         ], dtype=np.float32)
 
-        # Posizioni giocatori e palla per la minimap
-        self._players  = {}   # tid -> (team_id, (mx, my))
-        self._ball_map = None # (mx, my) sulla minimap
-
-    # ── Calibrazione ──────────────────────────────────────────────────────────
-    def _detect_field_corners(self, frame):
-        """
-        Rileva i 4 angoli del campo usando linee Hough sul canale verde.
-        Restituisce i 4 angoli in pixel ordinati: TL, TR, BR, BL
-        oppure None se la rilevazione fallisce.
-        """
-        h, w = frame.shape[:2]
-
-        # Maschera verde del campo
-        hsv  = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(hsv,
-                           np.array([35,  40,  40]),
-                           np.array([85, 255, 255]))
-
-        # Trova il bounding box dell'area verde principale
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
-                                       cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            return None
-
-        largest = max(contours, key=cv2.contourArea)
-        area    = cv2.contourArea(largest)
-        if area < (h * w * 0.2):   # almeno 20% del frame
-            return None
-
-        # Approssima a quadrilatero
-        peri   = cv2.arcLength(largest, True)
-        approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
-
-        if len(approx) == 4:
-            pts = approx.reshape(4, 2).astype(np.float32)
-        else:
-            # Usa il bounding rect come fallback
-            x, y, bw, bh = cv2.boundingRect(largest)
-            pts = np.array([
-                [x,    y   ],
-                [x+bw, y   ],
-                [x+bw, y+bh],
-                [x,    y+bh],
-            ], dtype=np.float32)
-
-        # Ordina: TL, TR, BR, BL
-        pts = self._order_points(pts)
-        return pts
-
-    def _order_points(self, pts):
-        rect = np.zeros((4, 2), dtype=np.float32)
-        s    = pts.sum(axis=1)
-        diff = np.diff(pts, axis=1)
-        rect[0] = pts[np.argmin(s)]      # TL
-        rect[2] = pts[np.argmax(s)]      # BR
-        rect[1] = pts[np.argmin(diff)]   # TR
-        rect[3] = pts[np.argmax(diff)]   # BL
-        return rect
-
-    def calibrate(self, frame):
-        """Ricalibra la homografia sul frame corrente."""
-        src_pts = self._detect_field_corners(frame)
-        if src_pts is None:
-            return False
-
-        dst_pts = self._field_pts.copy()
-        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        H, _ = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         if H is None:
             return False
 
@@ -115,87 +116,85 @@ class HomographyMapper:
         self._calibrated = True
         return True
 
+    # ── chiamato ogni frame da run() ──────────────────────────────────────────
     def update_frame(self, frame):
-        """Chiamare ogni frame — gestisce la ricalibrazione periodica."""
         self._frame_cnt += 1
         if self._frame_cnt % self._cal_every == 1:
             self.calibrate(frame)
 
-    # ── Conversioni ────────────────────────────────────────────────────────────
+    # ── pixel frame → coordinate metriche campo ───────────────────────────────
     def pixel_to_field(self, pixel_pt):
-        """Converte coordinate pixel -> metri sul campo."""
         if self.H is None:
             return None
         px = np.array([[[float(pixel_pt[0]), float(pixel_pt[1])]]], dtype=np.float32)
         fp = cv2.perspectiveTransform(px, self.H)[0][0]
-        # Filtra punti fuori campo con margine
-        if -5 < fp[0] < FIELD_W+5 and -5 < fp[1] < FIELD_H+5:
-            return (float(np.clip(fp[0], 0, FIELD_W)),
-                    float(np.clip(fp[1], 0, FIELD_H)))
+        if -5 < fp[0] < FIELD_W + 5 and -5 < fp[1] < FIELD_H + 5:
+            return (
+                float(np.clip(fp[0], 0, FIELD_W)),
+                float(np.clip(fp[1], 0, FIELD_H))
+            )
         return None
 
+    # ── coordinate metriche campo → pixel minimap ─────────────────────────────
     def field_to_map(self, field_pt):
-        """Converte metri sul campo -> pixel sulla minimap."""
         mx = int(field_pt[0] / FIELD_W * MAP_W)
         my = int(field_pt[1] / FIELD_H * MAP_H)
-        return (np.clip(mx, 0, MAP_W-1), np.clip(my, 0, MAP_H-1))
+        return (
+            int(np.clip(mx, 0, MAP_W - 1)),
+            int(np.clip(my, 0, MAP_H - 1))
+        )
 
-    # ── Update posizioni ───────────────────────────────────────────────────────
     def update_players(self, field_positions):
-        """field_positions: {tid: (team_id, (fx, fy))}"""
         self._players = {}
         for tid, (team_id, fp) in field_positions.items():
             self._players[tid] = (team_id, self.field_to_map(fp))
 
     def update_ball(self, pixel_pt):
         fp = self.pixel_to_field(pixel_pt)
-        if fp:
-            self._ball_map = self.field_to_map(fp)
-        else:
-            self._ball_map = None
+        self._ball_map = self.field_to_map(fp) if fp else None
 
-    # ── Rendering minimap ──────────────────────────────────────────────────────
+    # ── rendering minimap ─────────────────────────────────────────────────────
     def render_minimap(self) -> np.ndarray:
         img = np.zeros((MAP_H, MAP_W, 3), dtype=np.uint8)
         img[:] = _GREEN
 
-        # Linee campo
-        cv2.rectangle(img, (0, 0), (MAP_W-1, MAP_H-1), _WHITE, 1)
+        # Bordo campo
+        cv2.rectangle(img, (0, 0), (MAP_W - 1, MAP_H - 1), _WHITE, 1)
 
-        # Centrocampo
+        # Metà campo
         cx = MAP_W // 2
         cv2.line(img, (cx, 0), (cx, MAP_H), _WHITE, 1)
+
+        # Cerchio centrale
         r = int(9.15 / FIELD_W * MAP_W)
-        cv2.circle(img, (cx, MAP_H//2), r, _WHITE, 1)
-        cv2.circle(img, (cx, MAP_H//2), 2, _WHITE, -1)
+        cv2.circle(img, (cx, MAP_H // 2), r, _WHITE, 1)
+        cv2.circle(img, (cx, MAP_H // 2), 2, _WHITE, -1)
 
         # Aree di rigore
         pa_w = int(40.32 / FIELD_W * MAP_W)
         pa_h = int(16.5  / FIELD_H * MAP_H)
         y0   = (MAP_H - pa_h) // 2
-        # Sinistra
-        cv2.rectangle(img, (0, y0), (pa_w, y0+pa_h), _WHITE, 1)
-        # Destra
-        cv2.rectangle(img, (MAP_W-pa_w, y0), (MAP_W-1, y0+pa_h), _WHITE, 1)
+        cv2.rectangle(img, (0,          y0), (pa_w,        y0 + pa_h), _WHITE, 1)
+        cv2.rectangle(img, (MAP_W-pa_w, y0), (MAP_W - 1,   y0 + pa_h), _WHITE, 1)
 
         # Giocatori
         for tid, (team_id, (mx, my)) in self._players.items():
             color = _T0 if team_id == 0 else (_T1 if team_id == 1 else (200, 100, 255))
-            cv2.circle(img, (mx, my), 5, color, -1)
-            cv2.circle(img, (mx, my), 5, _WHITE, 1)
+            cv2.circle(img, (mx, my), 5, color,  -1)
+            cv2.circle(img, (mx, my), 5, _WHITE,  1)
 
         # Palla
         if self._ball_map:
             bx, by = self._ball_map
             cv2.circle(img, (bx, by), 4, _BALL_COLOR, -1)
-            cv2.circle(img, (bx, by), 4, _WHITE, 1)
+            cv2.circle(img, (bx, by), 4, _WHITE,       1)
 
-        # Bordo minimap
-        cv2.rectangle(img, (0, 0), (MAP_W-1, MAP_H-1), (80, 80, 80), 1)
+        # Bordo grigio esterno
+        cv2.rectangle(img, (0, 0), (MAP_W - 1, MAP_H - 1), (80, 80, 80), 1)
 
-        # Label se non calibrata
+        # Label calibrazione
         if not self._calibrated:
-            cv2.putText(img, "Calibrazione...", (4, MAP_H-6),
+            cv2.putText(img, "Calibrazione...", (4, MAP_H - 6),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.35, _WHITE, 1)
 
         return img

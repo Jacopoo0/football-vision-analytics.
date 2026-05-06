@@ -66,18 +66,19 @@ class StatsTracker:
             self.poss_history.append(-1)
 
         # ── Passaggi ──────────────────────────────────────────────────────────
+# ── Passaggi ──────────────────────────────────────────────────────────────
         if in_possession:
             if closest_team == self._ball_owner_team:
                 self._owner_streak += 1
-                if (self._pass_cooldown == 0
-                        and self._owner_streak == 1
+            else:
+                # cambio squadra → se c'era possesso precedente è un passaggio
+                if (self._ball_owner_team in (0, 1)
+                        and self._pass_cooldown == 0
                         and self._prev_free_frames >= 2):
                     self.passes[closest_team] += 1
                     self._pass_cooldown = self.PASS_COOLDOWN
-                    print(f"  [PASS] Team {closest_team} "
-                          f"(free={self._prev_free_frames}f "
-                          f"streak={self._owner_streak})")
-            else:
+                    print(f"  [PASS] Team {self._ball_owner_team} → {closest_team} "
+                        f"(free={self._prev_free_frames}f)")
                 self._ball_owner_team = closest_team
                 self._owner_streak    = 1
             self._prev_free_frames = 0
