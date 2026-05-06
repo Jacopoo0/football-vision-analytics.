@@ -1,206 +1,248 @@
 <div align="center">
 
-<img src="https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python&logoColor=white"/>
-<img src="https://img.shields.io/badge/YOLOv8-Ultralytics-00FFAA?style=for-the-badge&logo=pytorch&logoColor=white"/>
-<img src="https://img.shields.io/badge/BoxMOT-BoTSORT-orange?style=for-the-badge"/>
-<img src="https://img.shields.io/badge/CUDA-12.1-76B900?style=for-the-badge&logo=nvidia&logoColor=white"/>
-<img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge"/>
-
 ⚽ MiniMappaFootBall
-Real-time football video analysis with player tracking, team classification, match statistics and tactical minimap.
+Real-time football video analysis — player tracking, team classification, match statistics & tactical minimap
 
-Features - Demo - Installation - Usage - Architecture - Configuration - Roadmap
+
+[
+[
+[
+[
+[
+[
+[
+
+
+
+MiniMappaFootBall is a computer vision pipeline that processes football match footage in real time — detecting players and the ball with a custom YOLOv8 model, assigning persistent multi-object track IDs via BoTSORT with camera motion compensation, classifying each player into their team by jersey colour, and rendering a live DAZN-style analytics overlay with a calibrated tactical minimap.
+
+
 
 </div>
 
-🎬 Demo
-Output video with live panel and minimap overlay at 960×540 + 360px side panel
-
+📸 Output Preview
 text
-┌─────────────────────────────────────────┬──────────────────────┐
-│                                         │  MATCH ANALYSIS 00:51│
-│         VIDEO FRAME (960×540)           ├──────────────────────┤
-│                                         │  BALL POSSESSION     │
-│  #12  #7   #3                           │  80%  ─  20%         │
-│  ●    ○    ●                            ├──────────────────────┤
-│                                         │  ON FIELD   4 │ 9    │
-│  ┌─────────────┐                        ├──────────────────────┤
-│  │  MINIMAP    │                        │  PASSES     1 │ 1    │
-│  │  [field]    │                        ├──────────────────────┤
-│  └─────────────┘                        │  SPEED  15.6 │ 16.8  │
-│                                         ├──────────────────────┤
-│                                         │  DISTANCE  0.42 km   │
-└─────────────────────────────────────────┴──────────────────────┘
+┌─────────────────────────────────────────────────────┬──────────────────────────┐
+│                                                     │  MATCH ANALYSIS    01:00 │
+│                                                     │  ▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░░░ │
+│          VIDEO FRAME  960 × 540                     ├──────────────────────────┤
+│                                                     │  BALL POSSESSION         │
+│   #12      #7    #3    #9                           │     80%  ─  20%          │
+│    ●        ○     ●     ○                           │  T0 ████████████░░  T1   │
+│                                                     ├──────────────────────────┤
+│                    #5   REF                         │  ON FIELD                │
+│                     ●    ◆                          │  ┌──────┐  ┌──────┐      │
+│                                                     │  │  9   │  │  11  │      │
+│  ┌──────────────────────┐                           │  │ TEAM0│  │ TEAM1│      │
+│  │  ●   ·  ·  ○   ○    │  MINIMAP                  │  └──────┘  └──────┘      │
+│  │   ·  ●     ·   ○    │  300 × 194 px             ├──────────────────────────┤
+│  │  ·      ★      ○    │  (homography)             │  PASSES    3  │  5        │
+│  └──────────────────────┘                           ├──────────────────────────┤
+│                                                     │  SPEED  avg / max        │
+│                                                     │  16.2 km/h  │  18.7 km/h │
+│                                                     ├──────────────────────────┤
+│                                                     │  DISTANCE                │
+│                                                     │  T0 ██████████  0.84 km  │
+│                                                     │  T1 ████████░░  0.71 km  │
+└─────────────────────────────────────────────────────┴──────────────────────────┘
 ✨ Features
-🔍 Player & Ball Detection — YOLOv8 with custom soccana_best.pt model trained on football footage
-
-🎯 Multi-Object Tracking — BoTSORT with camera motion compensation (CMC) for stable IDs across frames
-
-👕 Team Classification — Automatic jersey color clustering in LAB color space with 30-frame history buffer for stability
-
-📊 Live Match Statistics — Possession %, passes, average/max speed (km/h), distance covered (km) per team
-
-🗺️ Tactical Minimap — Auto-calibrated homography from green field detection, real-time player positions projected to a 2D bird's-eye view
-
-🎨 DAZN-style UI — Dark professional panel with animated progress bar, split possession bars, color-coded team cards
-
-⚡ Threaded Pipeline — Inference worker runs in a separate thread; main thread handles I/O without blocking
-
+Module	Description
+🔍 Detection	YOLOv8 with custom soccana_best.pt — detects Player, Ball, Referee per frame
+🎯 Tracking	BoTSORT with camera motion compensation (cmc_method=sof) — stable IDs across cuts and occlusions
+👕 Team Classifier	Dominant jersey colour extracted in LAB space via KMeans; 30-frame history buffer stabilises noisy frames
+📊 Stats Engine	Per-team: possession %, passes, avg/max speed (km/h), distance (km) — all computed in real time
+🗺️ Tactical Minimap	Automatic homography from green-field contour detection; recalibrates every 30 frames for pan/zoom
+🎨 DAZN-style UI	Dark professional panel built with Pillow + Inter font; split possession bar, colour-coded cards, progress strip
+🖼️ Preprocessing	CLAHE contrast enhancement + sharpening kernel applied before each inference — improves detection on compressed or low-quality footage
+⚡ Threaded Pipeline	InferenceWorker thread decouples inference from video I/O; no frame dropping in the main loop
 📁 Project Structure
 text
 MiniMappaFootBall/
+│
 ├── data/
 │   └── raw/
-│       └── input_vid.mp4          ← input video
+│       └── input_vid.mp4               ← source footage
+│
 ├── models/
-│   ├── soccana_best.pt            ← custom YOLO model for football
-│   └── osnet_x0_25_msmt17.pt      ← ReID weights for BoTSORT
+│   ├── soccana_best.pt                 ← custom YOLO weights (football)
+│   └── osnet_x0_25_msmt17.pt           ← ReID weights for BoTSORT
+│
 ├── src/
-│   ├── main.py                    ← entry point & rendering pipeline
-│   ├── team_classifier.py         ← LAB-based jersey color classification
-│   ├── stats_tracker.py           ← possession, passes, speed, distance
-│   └── homography.py              ← minimap via automatic homography
+│   ├── main.py                         ← pipeline entry point & canvas rendering
+│   ├── team_classifier.py              ← LAB-space jersey colour classification
+│   ├── stats_tracker.py                ← possession, passes, speed, distance
+│   ├── homography.py                   ← bird's-eye minimap via homography
+│   └── select_team_colors.py           ← interactive colour sampler (run once)
+│
 ├── .font_cache/
 │   ├── Inter-Regular.otf
 │   └── Inter-Bold.otf
-├── team_colors.json               ← LAB centroids for both teams
-├── output_football_analysis.mp4   ← generated output
-└── .venv/
-🔧 Installation
-Prerequisites
+│
+├── team_colors.json                    ← LAB centroids per team (generated)
+├── output_football_analysis.mp4        ← analysis output (generated)
+├── requirements.txt
+└── README.md
+🚀 Quick Start
+1 · Prerequisites
 Python 3.12
 
-NVIDIA GPU with CUDA 12.1+ (tested on RTX 4060 Laptop)
+NVIDIA GPU + CUDA 12.1 (tested: RTX 4060 Laptop)
 
 PyTorch 2.5.1 with CUDA
 
-Setup
-powershell
-# Clone the repository
-git clone https://github.com/yourusername/MiniMappaFootBall.git
+2 · Install
+bash
+git clone https://github.com/YOUR_USERNAME/MiniMappaFootBall.git
 cd MiniMappaFootBall
 
-# Create virtual environment
 python -m venv .venv
+# Windows
 .venv\Scripts\Activate.ps1
+# Linux / macOS
+source .venv/bin/activate
 
-# Install dependencies
 pip install -r requirements.txt
-Requirements
-text
-ultralytics>=8.0.0
-boxmot>=10.0.0
-supervision>=0.18.0
-opencv-python>=4.9.0
-Pillow>=10.0.0
-scikit-learn>=1.4.0
-numpy>=1.26.0
-torch>=2.5.1
-🚀 Usage
-1. Calibrate Team Colors
-Run the interactive color picker to sample jersey colors from your video:
-
-powershell
+3 · Calibrate Team Colours (run once per video)
+bash
 python src/select_team_colors.py
-Draw rectangles over jerseys of Team 0 (default)
+Draw rectangles over player jerseys → TAB to switch team → ENTER to save team_colors.json.
 
-Press TAB to switch to Team 1
-
-Press ENTER to save → team_colors.json
-
-2. Run Analysis
-powershell
-cd C:\path\to\MiniMappaFootBall
+4 · Run Analysis
+bash
 python src/main.py
-Output video is saved to output_football_analysis.mp4.
+Output is written to output_football_analysis.mp4.
 
 ⚙️ Configuration
-All main parameters are at the top of src/main.py:
+Edit the constants block at the top of src/main.py:
 
-Parameter	Default	Description
-MAX_SECONDS	60	Seconds of video to process (None = full video)
-PLAYER_CONF	0.18	YOLO detection confidence threshold
-INFER_SIZE	640	YOLO inference resolution (higher = more accurate, slower)
-SAVE_VIDEO	True	Save output to .mp4
-SHOW_PREVIEW	False	Show live OpenCV window during processing
-FRAME_W / FRAME_H	960 / 540	Output frame resolution
-PANEL_W	360	Width of the stats panel
-🏗️ Architecture
+python
+MAX_SECONDS  = 60      # seconds to process  (None = full video)
+PLAYER_CONF  = 0.18    # YOLO confidence threshold
+INFER_SIZE   = 640     # inference resolution — higher → more accurate, slower
+SAVE_VIDEO   = True    # write output .mp4
+SHOW_PREVIEW = False   # display live OpenCV window
+FRAME_W      = 960     # output frame width
+FRAME_H      = 540     # output frame height
+PANEL_W      = 360     # stats panel width
+🏗️ Pipeline Architecture
 text
-Video Frame
-     │
-     ▼
-preprocess_frame()          ← CLAHE contrast + sharpening
-     │
-     ├──► YOLO (players/refs) ──► BoTSORT tracker ──► track IDs
-     │                                    │
-     │                            TeamClassifier
-     │                          (LAB color → team 0/1)
-     │
-     ├──► YOLO (ball) ──────────────────────────────► ball center
-     │
-     ▼
-HomographyMapper
-  ├── detect field corners (green mask → contour)
-  ├── cv2.findHomography (pixel → metres)
-  └── render_minimap() → 300×194px bird's-eye view
-     │
-     ▼
-StatsTracker
-  ├── possession (closest player to ball)
-  ├── passes (team change after ≥6 frame streak)
-  ├── speed (pixel displacement × METERS_PER_PIXEL × fps × 3.6)
-  └── distance (cumulative pixel displacement)
-     │
-     ▼
-build_panel() + build_canvas()
-     │
-     ▼
-output_football_analysis.mp4
-🗺️ Minimap Details
-The minimap is computed via automatic homography calibration:
-
-HSV green mask isolates the pitch from the background
-
-Morphological cleaning removes noise (fans, billboards)
-
-approxPolyDP extracts the 4 field corners; falls back to bounding rect with 3% margin
-
-cv2.findHomography maps pixel coordinates → metric coordinates (105m × 68m)
-
-Player foot positions are projected and rendered on a 300×194px field with alternating stripes
-
-Recalibration runs every 30 frames to handle camera pan/zoom.
-
-📊 Stats Engine
-Metric	Method
-Possession	Frame-by-frame: team of player closest to ball (threshold: 90px)
+┌──────────────┐
+│  Video Frame │
+└──────┬───────┘
+       │
+       ▼
+┌─────────────────────┐
+│  preprocess_frame() │  CLAHE + sharpening kernel
+└──────┬──────────────┘
+       │
+       ├─────────────────────────────────────────┐
+       ▼                                         ▼
+┌─────────────────┐                    ┌──────────────────┐
+│  YOLO (players) │                    │   YOLO (ball)    │
+│  conf=0.18      │                    │   conf=0.05      │
+└──────┬──────────┘                    └────────┬─────────┘
+       │                                        │
+       ▼                                        ▼
+┌──────────────┐                      ┌──────────────────┐
+│   BoTSORT    │  CMC: sof            │   ball_center    │
+│   track IDs  │  track_buffer=120    │   (pixel coords) │
+└──────┬───────┘                      └────────┬─────────┘
+       │                                        │
+       ▼                                        │
+┌─────────────────┐                             │
+│ TeamClassifier  │                             │
+│ LAB → team 0/1  │                             │
+│ history=30f     │                             │
+└──────┬──────────┘                             │
+       │                                        │
+       └──────────────┬─────────────────────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │    StatsTracker     │
+           │  possession         │
+           │  passes (≥6f streak)│
+           │  speed / distance   │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │  HomographyMapper   │
+           │  green mask → H     │
+           │  recal every 30f    │
+           │  render_minimap()   │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           ┌─────────────────────┐
+           │  build_panel()      │
+           │  build_canvas()     │
+           └──────────┬──────────┘
+                      │
+                      ▼
+           output_football_analysis.mp4
+📊 Stats Reference
+Metric	Computation
+Possession	Team of the player closest to the ball (threshold: 90 px)
 Recent possession	Rolling 5-second window
-Passes	Team change event after ≥6 frames of continuous possession
-Speed	px_displacement × 0.058 m/px × fps × 3.6 → km/h
-Distance	Cumulative per-player displacement, filtered 0.5–60px/frame
-Max speed	Per-team rolling maximum, capped at 60 km/h
+Pass	Team change event after ≥ 6 consecutive frames of possession by the previous team
+Speed	Δpx × 0.058 m/px × fps × 3.6 → km/h; per-player rolling window (1 s)
+Distance	Cumulative displacement per player, filtered to 0.5 – 60 px / frame
+Max speed	Per-team rolling maximum, physically capped at 60 km/h
+🗺️ Minimap & Homography
+The minimap is a 300 × 194 px bird's-eye view of a standard 105 × 68 m pitch, calibrated automatically each run:
+
+HSV green mask → isolates the pitch surface
+
+Morphological cleaning (CLOSE + OPEN, 9 × 9 ellipse) → removes crowd / ad-board noise
+
+approxPolyDP on the largest green contour → extracts 4 field corners; falls back to bounding rect (± 3% margin) when the polygon has ≠ 4 vertices
+
+cv2.findHomography (RANSAC) → pixel space to metric space mapping
+
+Recalibration every 30 frames → handles camera pan / zoom / cut
+
+Player foot-point (cx, cy) is projected through H and rendered as a coloured dot with a white ring. The ball is rendered as a yellow dot with a glow.
+
 🛣️ Roadmap
-Multiple camera support with cross-view homography stitching
+Heatmaps — per-player and per-team spatial density overlays
 
-Formation detection (4-4-2, 4-3-3, etc.)
+Formation detection — automatic recognition of 4-4-2, 4-3-3, etc.
 
-Heatmap generation per player/team
+Event detection — shot on goal, corner kick, throw-in
 
-Export statistics to JSON/CSV
+CSV / JSON export — per-frame structured statistics
 
-Web dashboard (Angular + Django)
+Web dashboard — Angular frontend + Django REST backend
 
-Support for broadcast-quality 1080p/4K input
+Multi-camera support — cross-view homography stitching
+
+1080p / 4K input — optimised inference for broadcast quality video
 
 🤝 Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+Contributions are welcome. Please open an issue first to discuss significant changes.
 
+bash
+# Fork → branch → commit → pull request
+git checkout -b feature/your-feature-name
+git commit -m "feat: describe your change"
+git push origin feature/your-feature-name
 📄 License
-This project is licensed under the MIT License — see the LICENSE file for details.
+Distributed under the MIT License. See LICENSE for details.
 
 <div align="center">
 
-Built with ❤️ using YOLOv8 · BoTSORT · OpenCV · Pillow · scikit-learn
+Built with &nbsp;
+YOLOv8 ·
+BoxMOT ·
+Supervision ·
+OpenCV ·
+Pillow ·
+scikit-learn
+
+
+
+If you find this project useful, consider leaving a ⭐
 
 </div>
+
