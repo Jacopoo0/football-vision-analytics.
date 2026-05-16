@@ -100,7 +100,7 @@ class HomographyMapper:
         green = cv2.inRange(hsv, np.array([30, 40, 40]), np.array([90, 255, 255]))
 
         # Linee bianche solo dove c'è erba
-        _, white = cv2.threshold(gray, 190, 255, cv2.THRESH_BINARY)
+        _, white = cv2.threshold(gray, 170, 255, cv2.THRESH_BINARY)
         lines_mask = cv2.bitwise_and(white, green)
 
         # Pulizia morfologica

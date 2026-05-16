@@ -21,7 +21,7 @@ OUTPUT_MP4 = BASE_DIR / "output_football_analysis.mp4"
 # ── Config ─────────────────────────────────────────────────────────────────────
 MAX_SECONDS      = 60
 PLAYER_CONF      = 0.15        # basso: recupera giocatori distanti / coperti
-PLAYER_IOU       = 0.45
+PLAYER_IOU       = 0.55
 TEAM_HISTORY_LEN = 45          # più storia = classificazione squadra più stabile
 INFER_SIZE       = 640
 SAVE_VIDEO       = True
@@ -480,9 +480,9 @@ def main():
         half              = False,
         track_high_thresh = 0.25,
         track_low_thresh  = 0.10,
-        new_track_thresh  = 0.20,
-        track_buffer      = 120,
-        match_thresh      = 0.85,
+        new_track_thresh  = 0.10,
+        track_buffer      = 180,
+        match_thresh      = 0.90,
         cmc_method        = "sof",
     )
 
